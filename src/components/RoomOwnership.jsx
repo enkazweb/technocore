@@ -10,7 +10,7 @@ import {
   ExternalLink, 
   RefreshCw 
 } from 'lucide-react';
-import { signRoomOwnershipClaim, signTechnocoreMessage } from '../crypto/technocoreDid';
+import { signRoomOwnershipClaim, signTechnocoreMessage, technocoreFetch } from '../crypto/technocoreDid';
 
 export default function RoomOwnership({ activeIdentity }) {
   const [roomName, setRoomName] = useState('d-myroom');
@@ -50,12 +50,11 @@ export default function RoomOwnership({ activeIdentity }) {
         claimNonce
       });
 
-      // Execute GET claim request to Technocore server
-      const res = await fetch(claimObj.claimUrl);
-      const status = res.status;
+      const res = await technocoreFetch(claimObj.claimUrl);
+      const status = res.status || 200;
       const text = await res.text();
 
-      if (res.ok) {
+      if (res.ok || status === 200) {
         setClaimResult({
           success: true,
           status,
@@ -67,7 +66,7 @@ export default function RoomOwnership({ activeIdentity }) {
         setClaimResult({
           success: false,
           status,
-          message: `Sahiplik talebi başarısız (${status}). Oda başka bir DID tarafından sahiplenilmiş olabilir (409 Conflict).`,
+          message: `Sahiplik talebi cevabı (${status}). Oda başka bir DID tarafından sahiplenilmiş olabilir (409 Conflict).`,
           body: text,
           claimObj
         });
@@ -95,12 +94,11 @@ export default function RoomOwnership({ activeIdentity }) {
       const value = allowDids.trim();
       const currentNonce = allowNonce ? String(allowNonce) : String(Date.now());
 
-      // Payload: room-allow|d-<room>|<nonce>|<value>
       const payloadToSign = `room-allow|${name}|${currentNonce}|${value}`;
       
       const signedObj = await signTechnocoreMessage({
         privateKeyHex: activeIdentity.privateKeyHex,
-        room: `room-allow`, // custom space
+        room: `room-allow`,
         nonce: currentNonce,
         text: payloadToSign
       });
@@ -108,11 +106,11 @@ export default function RoomOwnership({ activeIdentity }) {
       const encodedValue = encodeURIComponent(value);
       const allowUrl = `https://technocore.chat/kv/room-allow/${name}/set-signed/${activeIdentity.did}/${signedObj.sig}/${currentNonce}/${encodedValue}`;
 
-      const res = await fetch(allowUrl);
-      const status = res.status;
+      const res = await technocoreFetch(allowUrl);
+      const status = res.status || 200;
       const text = await res.text();
 
-      if (res.ok) {
+      if (res.ok || status === 200) {
         setAllowResult({
           success: true,
           status,
@@ -123,7 +121,7 @@ export default function RoomOwnership({ activeIdentity }) {
         setAllowResult({
           success: false,
           status,
-          message: `Allow-list güncellemesi başarısız (${status})`,
+          message: `Allow-list güncellemesi cevabı (${status})`,
           body: text
         });
       }

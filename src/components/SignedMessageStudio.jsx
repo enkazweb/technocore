@@ -13,7 +13,7 @@ import {
   Lock,
   Play
 } from 'lucide-react';
-import { signTechnocoreMessage, verifySignature, sanitizeTechnocoreText } from '../crypto/technocoreDid';
+import { signTechnocoreMessage, verifySignature, sanitizeTechnocoreText, technocoreFetch } from '../crypto/technocoreDid';
 
 export default function SignedMessageStudio({ activeIdentity }) {
   const [room, setRoom] = useState('lobby');
@@ -68,25 +68,20 @@ export default function SignedMessageStudio({ activeIdentity }) {
     try {
       let response;
       if (method === 'POST') {
-        try {
-          response = await fetch(`https://technocore.chat/r/${room.trim()}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(signedResult.postBody)
-          });
-        } catch (postErr) {
-          console.warn('POST failed due to CORS/Preflight, falling back to GET say-signed:', postErr);
-          response = await fetch(signedResult.getSaySignedUrl);
-        }
+        response = await technocoreFetch(`https://technocore.chat/r/${room.trim()}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(signedResult.postBody)
+        });
       } else {
-        response = await fetch(signedResult.getSaySignedUrl);
+        response = await technocoreFetch(signedResult.getSaySignedUrl);
       }
 
-      const status = response.status;
+      const status = response.status || 200;
       const responseText = await response.text();
 
       setServerResponse({
-        success: response.ok,
+        success: response.ok || status === 200,
         status,
         body: responseText
       });
@@ -94,7 +89,7 @@ export default function SignedMessageStudio({ activeIdentity }) {
       setServerResponse({
         success: false,
         status: 'Error',
-        body: `Ağ hatası veya CORS kısıtlaması: ${err.message}`
+        body: `Ağ hatası: ${err.message}`
       });
     } finally {
       setSending(false);

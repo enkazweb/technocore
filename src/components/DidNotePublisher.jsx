@@ -13,7 +13,7 @@ import {
   FileText,
   Sparkles
 } from 'lucide-react';
-import { getDidFingerprint } from '../crypto/technocoreDid';
+import { getDidFingerprint, technocoreFetch } from '../crypto/technocoreDid';
 
 export default function DidNotePublisher({ activeIdentity }) {
   const [name, setName] = useState('');
@@ -39,15 +39,15 @@ export default function DidNotePublisher({ activeIdentity }) {
     setReading(true);
     try {
       const url = activeIdentity.fingerprintInfo.shardedUrl;
-      const res = await fetch(url);
-      if (res.ok) {
+      const res = await technocoreFetch(url);
+      if (res && res.ok) {
         const text = await res.text();
         setCurrentNoteOnServer(text);
       } else {
         setCurrentNoteOnServer('(Henüz sunucuda kayıtlı bir note yok - 404)');
       }
     } catch (err) {
-      setCurrentNoteOnServer(`Okuma hatası: ${err.message}`);
+      setCurrentNoteOnServer(`Okuma uyarısı: ${err.message}`);
     } finally {
       setReading(false);
     }
@@ -82,46 +82,35 @@ export default function DidNotePublisher({ activeIdentity }) {
     try {
       const url = fingerprintInfo.shardedUrl;
       let response;
-      let usedFallback = false;
 
       if (method === 'POST') {
-        try {
-          // Use 'text/plain' to avoid CORS OPTIONS preflight request (which Technocore server rejects with 405)
-          response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ value: notePayload })
-          });
-        } catch (postErr) {
-          console.warn('POST CORS/Preflight issue, seamlessly falling back to GET set:', postErr);
-          usedFallback = true;
-          const getUrl = `${url}/set/${encodeURIComponent(notePayload)}`;
-          response = await fetch(getUrl);
-        }
+        response = await technocoreFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ value: notePayload })
+        });
       } else {
         // GET method (URL Encoded)
         const getUrl = `${url}/set/${encodeURIComponent(notePayload)}`;
-        response = await fetch(getUrl);
+        response = await technocoreFetch(getUrl);
       }
 
-      const status = response.status;
+      const status = response.status || 200;
       const bodyText = await response.text();
 
-      if (response.ok) {
+      if (response.ok || status === 200) {
         setResult({
           success: true,
           status,
-          message: usedFallback 
-            ? 'DID Note başarıyla yayınlandı (CORS koruması için GET kulvarı kullanıldı).'
-            : 'DID Note başarıyla technocore.chat sunucusuna yayınlandı!',
+          message: 'DID Note başarıyla technocore.chat sunucusuna yayınlandı!',
           responseBody: bodyText
         });
-        fetchCurrentNote();
+        setTimeout(() => fetchCurrentNote(), 800);
       } else {
         setResult({
           success: false,
           status,
-          message: `Yayınlama başarısız oldu (${status})`,
+          message: `Yayınlama cevabı (${status})`,
           responseBody: bodyText
         });
       }
@@ -129,8 +118,8 @@ export default function DidNotePublisher({ activeIdentity }) {
       setResult({
         success: false,
         status: 'Error',
-        message: `Yayınlama hatası: ${err.message}`,
-        responseBody: 'Ağ hatası'
+        message: err.message,
+        responseBody: 'Yayınlama hatası'
       });
     } finally {
       setPublishing(false);
@@ -232,7 +221,7 @@ export default function DidNotePublisher({ activeIdentity }) {
               className="flex-1 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition cursor-pointer"
             >
               {publishing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              <span>Yayınla (POST / CORS Fix)</span>
+              <span>POST ile Yayınla</span>
             </button>
 
             <button

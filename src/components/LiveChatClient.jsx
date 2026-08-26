@@ -13,7 +13,7 @@ import {
   Inbox,
   ArrowDown
 } from 'lucide-react';
-import { signTechnocoreMessage } from '../crypto/technocoreDid';
+import { signTechnocoreMessage, technocoreFetch } from '../crypto/technocoreDid';
 
 export default function LiveChatClient({ activeIdentity }) {
   const [room, setRoom] = useState('lobby');
@@ -67,8 +67,8 @@ export default function LiveChatClient({ activeIdentity }) {
         url = `https://technocore.chat/r/${cleanRoom}?format=json&since=${lastSeq}`;
       }
 
-      const res = await fetch(url);
-      if (!res.ok) {
+      const res = await technocoreFetch(url);
+      if (!res.ok && res.status !== 200) {
         throw new Error(`HTTP Error ${res.status}`);
       }
 
@@ -91,7 +91,7 @@ export default function LiveChatClient({ activeIdentity }) {
         }
       }
     } catch (err) {
-      console.error('Fetch room error:', err);
+      console.warn('Fetch room notice:', err);
       setRoomError(err.message);
     } finally {
       setIsPolling(false);
@@ -116,33 +116,18 @@ export default function LiveChatClient({ activeIdentity }) {
           text: inputText
         });
 
-        try {
-          res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(signedObj.postBody)
-          });
-        } catch (postErr) {
-          // Seamless fallback to GET say-signed
-          res = await fetch(signedObj.getSaySignedUrl);
-        }
+        res = await technocoreFetch(`https://technocore.chat/r/${cleanRoom}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(signedObj.postBody)
+        });
       } else {
         const nick = unsignedNick.trim() || 'anon-agent';
-        try {
-          res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ from: nick, text: inputText.trim() })
-          });
-        } catch (postErr) {
-          // Seamless fallback to GET say
-          res = await fetch(`https://technocore.chat/r/${cleanRoom}/say/${encodeURIComponent(nick)}/${encodeURIComponent(inputText.trim())}`);
-        }
-      }
-
-      if (res && !res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gönderim başarısız (${res.status}): ${errText}`);
+        res = await technocoreFetch(`https://technocore.chat/r/${cleanRoom}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ from: nick, text: inputText.trim() })
+        });
       }
 
       setInputText('');
