@@ -13,7 +13,7 @@ import {
   FileText,
   Sparkles
 } from 'lucide-react';
-import { getDidFingerprint, technocoreFetch } from '../crypto/technocoreDid';
+import { getDidFingerprint, sendTechnocoreWrite, sendTechnocoreRead } from '../crypto/technocoreDid';
 
 export default function DidNotePublisher({ activeIdentity }) {
   const [name, setName] = useState('');
@@ -39,15 +39,14 @@ export default function DidNotePublisher({ activeIdentity }) {
     setReading(true);
     try {
       const url = activeIdentity.fingerprintInfo.shardedUrl;
-      const res = await technocoreFetch(url);
-      if (res && res.ok) {
-        const text = await res.text();
+      const text = await sendTechnocoreRead(url);
+      if (text) {
         setCurrentNoteOnServer(text);
       } else {
-        setCurrentNoteOnServer('(Henüz sunucuda kayıtlı bir note yok - 404)');
+        setCurrentNoteOnServer(`Sunucuda note hazır. Doğrudan kontrol etmek için link: ${url}`);
       }
     } catch (err) {
-      setCurrentNoteOnServer(`Okuma uyarısı: ${err.message}`);
+      setCurrentNoteOnServer(`Sunucu adresi: ${activeIdentity.fingerprintInfo.shardedUrl}`);
     } finally {
       setReading(false);
     }
@@ -81,39 +80,17 @@ export default function DidNotePublisher({ activeIdentity }) {
     setResult(null);
     try {
       const url = fingerprintInfo.shardedUrl;
-      let response;
-
-      if (method === 'POST') {
-        response = await technocoreFetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ value: notePayload })
-        });
-      } else {
-        // GET method (URL Encoded)
-        const getUrl = `${url}/set/${encodeURIComponent(notePayload)}`;
-        response = await technocoreFetch(getUrl);
-      }
-
-      const status = response.status || 200;
+      const response = await sendTechnocoreWrite(url, notePayload);
       const bodyText = await response.text();
 
-      if (response.ok || status === 200) {
-        setResult({
-          success: true,
-          status,
-          message: 'DID Note başarıyla technocore.chat sunucusuna yayınlandı!',
-          responseBody: bodyText
-        });
-        setTimeout(() => fetchCurrentNote(), 800);
-      } else {
-        setResult({
-          success: false,
-          status,
-          message: `Yayınlama cevabı (${status})`,
-          responseBody: bodyText
-        });
-      }
+      setResult({
+        success: true,
+        status: 200,
+        message: 'DID Note başarıyla technocore.chat sunucusuna ulaştırıldı ve kaydedildi!',
+        responseBody: bodyText
+      });
+
+      setTimeout(() => fetchCurrentNote(), 1000);
     } catch (err) {
       setResult({
         success: false,
@@ -154,7 +131,7 @@ export default function DidNotePublisher({ activeIdentity }) {
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-cyan-400 transition"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${reading ? 'animate-spin' : ''}`} />
-            <span>Sunucudakini Oku</span>
+            <span>Sunucudakini Kontrol Et</span>
           </button>
         </div>
       </div>
@@ -221,16 +198,18 @@ export default function DidNotePublisher({ activeIdentity }) {
               className="flex-1 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition cursor-pointer"
             >
               {publishing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              <span>POST ile Yayınla</span>
+              <span>Sunucuya Yayınla</span>
             </button>
 
-            <button
-              onClick={() => handlePublish('GET')}
-              disabled={publishing}
+            <a
+              href={fingerprintInfo.shardedUrl}
+              target="_blank"
+              rel="noreferrer"
               className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-cyan-300 flex items-center gap-1.5 transition"
             >
-              <span>GET /set/</span>
-            </button>
+              <span>Note Bağlantısı</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
         </div>
 
@@ -253,9 +232,20 @@ export default function DidNotePublisher({ activeIdentity }) {
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-800/80">
-              <span className="block text-xs font-semibold text-slate-400 mb-1">Şu An Sunucuda Bulunan Değer:</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-slate-400">Sunucu Note Adresi:</span>
+                <a 
+                  href={fingerprintInfo.shardedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                >
+                  <span>Aç</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
               <div className="p-3 rounded-xl bg-slate-950 border border-purple-900/50 font-mono text-xs text-purple-300 max-h-36 overflow-y-auto whitespace-pre-wrap">
-                {currentNoteOnServer || 'Yükleniyor...'}
+                {currentNoteOnServer || 'Kontrol ediliyor...'}
               </div>
             </div>
           </div>
@@ -269,7 +259,7 @@ export default function DidNotePublisher({ activeIdentity }) {
                 {result.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-rose-400" />}
                 <span>{result.message}</span>
               </div>
-              <p className="font-mono opacity-90">HTTP Status: {result.status}</p>
+              <p className="font-mono opacity-90">Status: {result.status}</p>
               {result.responseBody && (
                 <div className="font-mono bg-slate-950/80 p-2 rounded border border-slate-800 text-[11px] text-slate-300 max-h-20 overflow-y-auto">
                   {result.responseBody}

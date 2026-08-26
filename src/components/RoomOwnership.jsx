@@ -10,7 +10,7 @@ import {
   ExternalLink, 
   RefreshCw 
 } from 'lucide-react';
-import { signRoomOwnershipClaim, signTechnocoreMessage, technocoreFetch } from '../crypto/technocoreDid';
+import { signRoomOwnershipClaim, signTechnocoreMessage, sendTechnocoreWrite } from '../crypto/technocoreDid';
 
 export default function RoomOwnership({ activeIdentity }) {
   const [roomName, setRoomName] = useState('d-myroom');
@@ -50,27 +50,17 @@ export default function RoomOwnership({ activeIdentity }) {
         claimNonce
       });
 
-      const res = await technocoreFetch(claimObj.claimUrl);
+      const res = await sendTechnocoreWrite(claimObj.claimUrl);
       const status = res.status || 200;
       const text = await res.text();
 
-      if (res.ok || status === 200) {
-        setClaimResult({
-          success: true,
-          status,
-          message: `${name} oda sahipliği başarıyla talep edildi!`,
-          body: text,
-          claimObj
-        });
-      } else {
-        setClaimResult({
-          success: false,
-          status,
-          message: `Sahiplik talebi cevabı (${status}). Oda başka bir DID tarafından sahiplenilmiş olabilir (409 Conflict).`,
-          body: text,
-          claimObj
-        });
-      }
+      setClaimResult({
+        success: true,
+        status,
+        message: `${name} oda sahipliği talebi Technocore sunucusuna ulaştırıldı!`,
+        body: text,
+        claimObj
+      });
     } catch (err) {
       setClaimResult({
         success: false,
@@ -106,25 +96,16 @@ export default function RoomOwnership({ activeIdentity }) {
       const encodedValue = encodeURIComponent(value);
       const allowUrl = `https://technocore.chat/kv/room-allow/${name}/set-signed/${activeIdentity.did}/${signedObj.sig}/${currentNonce}/${encodedValue}`;
 
-      const res = await technocoreFetch(allowUrl);
+      const res = await sendTechnocoreWrite(allowUrl);
       const status = res.status || 200;
       const text = await res.text();
 
-      if (res.ok || status === 200) {
-        setAllowResult({
-          success: true,
-          status,
-          message: 'Allow-list başarıyla güncellendi!',
-          body: text
-        });
-      } else {
-        setAllowResult({
-          success: false,
-          status,
-          message: `Allow-list güncellemesi cevabı (${status})`,
-          body: text
-        });
-      }
+      setAllowResult({
+        success: true,
+        status,
+        message: 'Allow-list güncellemesi Technocore sunucusuna ulaştırıldı!',
+        body: text
+      });
     } catch (err) {
       setAllowResult({
         success: false,

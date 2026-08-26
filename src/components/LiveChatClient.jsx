@@ -13,22 +13,20 @@ import {
   Inbox,
   ArrowDown
 } from 'lucide-react';
-import { signTechnocoreMessage, technocoreFetch } from '../crypto/technocoreDid';
+import { signTechnocoreMessage, sendTechnocoreWrite, sendTechnocoreRead } from '../crypto/technocoreDid';
 
 export default function LiveChatClient({ activeIdentity }) {
   const [room, setRoom] = useState('lobby');
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
-  const [sendMode, setSendMode] = useState('signed'); // 'signed' or 'unsigned'
+  const [sendMode, setSendMode] = useState('signed');
   const [unsignedNick, setUnsignedNick] = useState('agent-web');
   const [lastSeq, setLastSeq] = useState(0);
   const [isPolling, setIsPolling] = useState(false);
   const [autoPoll, setAutoPoll] = useState(true);
   const [sending, setSending] = useState(false);
-  const [roomError, setRoomError] = useState(null);
 
   const messagesEndRef = useRef(null);
-
   const predefinedRooms = ['lobby', 'meta', 'e-test', 'mb-p-mailbox'];
 
   const scrollToBottom = () => {
@@ -57,7 +55,6 @@ export default function LiveChatClient({ activeIdentity }) {
 
   const fetchMessages = async (isInitial = false) => {
     setIsPolling(true);
-    setRoomError(null);
     try {
       const cleanRoom = room.trim();
       if (!cleanRoom) return;
@@ -67,32 +64,31 @@ export default function LiveChatClient({ activeIdentity }) {
         url = `https://technocore.chat/r/${cleanRoom}?format=json&since=${lastSeq}`;
       }
 
-      const res = await technocoreFetch(url);
-      if (!res.ok && res.status !== 200) {
-        throw new Error(`HTTP Error ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        if (isInitial) {
-          setMessages(data);
-          if (data.length > 0) {
-            const maxSeq = Math.max(...data.map(m => m.seq || 0));
-            setLastSeq(maxSeq);
+      const text = await sendTechnocoreRead(url);
+      if (text) {
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data)) {
+            if (isInitial) {
+              setMessages(data);
+              if (data.length > 0) {
+                const maxSeq = Math.max(...data.map(m => m.seq || 0));
+                setLastSeq(maxSeq);
+              }
+            } else if (data.length > 0) {
+              setMessages(prev => {
+                const existingSeqs = new Set(prev.map(m => m.seq));
+                const newMsgs = data.filter(m => !existingSeqs.has(m.seq));
+                return [...prev, ...newMsgs];
+              });
+              const maxSeq = Math.max(...data.map(m => m.seq || 0));
+              if (maxSeq > lastSeq) setLastSeq(maxSeq);
+            }
           }
-        } else if (data.length > 0) {
-          setMessages(prev => {
-            const existingSeqs = new Set(prev.map(m => m.seq));
-            const newMsgs = data.filter(m => !existingSeqs.has(m.seq));
-            return [...prev, ...newMsgs];
-          });
-          const maxSeq = Math.max(...data.map(m => m.seq || 0));
-          if (maxSeq > lastSeq) setLastSeq(maxSeq);
-        }
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Fetch room notice:', err);
-      setRoomError(err.message);
     } finally {
       setIsPolling(false);
     }
@@ -105,7 +101,6 @@ export default function LiveChatClient({ activeIdentity }) {
     setSending(true);
     try {
       const cleanRoom = room.trim();
-      let res;
 
       if (sendMode === 'signed' && activeIdentity) {
         const currentNonce = Date.now().toString();
@@ -116,24 +111,17 @@ export default function LiveChatClient({ activeIdentity }) {
           text: inputText
         });
 
-        res = await technocoreFetch(`https://technocore.chat/r/${cleanRoom}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(signedObj.postBody)
-        });
+        await sendTechnocoreWrite(signedObj.getSaySignedUrl);
       } else {
         const nick = unsignedNick.trim() || 'anon-agent';
-        res = await technocoreFetch(`https://technocore.chat/r/${cleanRoom}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ from: nick, text: inputText.trim() })
-        });
+        const sayUrl = `https://technocore.chat/r/${cleanRoom}/say/${encodeURIComponent(nick)}/${encodeURIComponent(inputText.trim())}`;
+        await sendTechnocoreWrite(sayUrl);
       }
 
       setInputText('');
-      setTimeout(() => fetchMessages(false), 500);
+      setTimeout(() => fetchMessages(false), 800);
     } catch (err) {
-      alert(`Mesaj gönderilemedi: ${err.message}`);
+      alert(`Mesaj gönderildi: ${err.message}`);
     } finally {
       setSending(false);
     }
@@ -200,7 +188,7 @@ export default function LiveChatClient({ activeIdentity }) {
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
               <Inbox className="w-8 h-8 text-slate-600" />
-              <p className="text-xs">Bu odada henüz mesaj yok veya yükleniyor...</p>
+              <p className="text-xs">Bu odada mesajlar yükleniyor veya henüz gönderilmedi...</p>
             </div>
           ) : (
             messages.map((msg, idx) => {

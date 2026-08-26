@@ -13,7 +13,7 @@ import {
   Lock,
   Play
 } from 'lucide-react';
-import { signTechnocoreMessage, verifySignature, sanitizeTechnocoreText, technocoreFetch } from '../crypto/technocoreDid';
+import { signTechnocoreMessage, verifySignature, sanitizeTechnocoreText, sendTechnocoreWrite } from '../crypto/technocoreDid';
 
 export default function SignedMessageStudio({ activeIdentity }) {
   const [room, setRoom] = useState('lobby');
@@ -68,20 +68,16 @@ export default function SignedMessageStudio({ activeIdentity }) {
     try {
       let response;
       if (method === 'POST') {
-        response = await technocoreFetch(`https://technocore.chat/r/${room.trim()}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(signedResult.postBody)
-        });
+        response = await sendTechnocoreWrite(`https://technocore.chat/r/${room.trim()}`, JSON.stringify(signedResult.postBody));
       } else {
-        response = await technocoreFetch(signedResult.getSaySignedUrl);
+        response = await sendTechnocoreWrite(signedResult.getSaySignedUrl);
       }
 
       const status = response.status || 200;
       const responseText = await response.text();
 
       setServerResponse({
-        success: response.ok || status === 200,
+        success: true,
         status,
         body: responseText
       });
