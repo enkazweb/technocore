@@ -68,11 +68,16 @@ export default function SignedMessageStudio({ activeIdentity }) {
     try {
       let response;
       if (method === 'POST') {
-        response = await fetch(`https://technocore.chat/r/${room.trim()}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(signedResult.postBody)
-        });
+        try {
+          response = await fetch(`https://technocore.chat/r/${room.trim()}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(signedResult.postBody)
+          });
+        } catch (postErr) {
+          console.warn('POST failed due to CORS/Preflight, falling back to GET say-signed:', postErr);
+          response = await fetch(signedResult.getSaySignedUrl);
+        }
       } else {
         response = await fetch(signedResult.getSaySignedUrl);
       }

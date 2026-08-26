@@ -36,7 +36,6 @@ export default function LiveChatClient({ activeIdentity }) {
   };
 
   useEffect(() => {
-    // Reset sequence and messages when switching rooms
     setMessages([]);
     setLastSeq(0);
     fetchMessages(true);
@@ -47,7 +46,7 @@ export default function LiveChatClient({ activeIdentity }) {
     if (autoPoll) {
       interval = setInterval(() => {
         fetchMessages(false);
-      }, 5000); // Poll every 5 seconds
+      }, 5000);
     }
     return () => clearInterval(interval);
   }, [room, lastSeq, autoPoll]);
@@ -82,7 +81,6 @@ export default function LiveChatClient({ activeIdentity }) {
             setLastSeq(maxSeq);
           }
         } else if (data.length > 0) {
-          // Append new messages without duplicates
           setMessages(prev => {
             const existingSeqs = new Set(prev.map(m => m.seq));
             const newMsgs = data.filter(m => !existingSeqs.has(m.seq));
@@ -107,9 +105,9 @@ export default function LiveChatClient({ activeIdentity }) {
     setSending(true);
     try {
       const cleanRoom = room.trim();
+      let res;
 
       if (sendMode === 'signed' && activeIdentity) {
-        // Sign message and post
         const currentNonce = Date.now().toString();
         const signedObj = await signTechnocoreMessage({
           privateKeyHex: activeIdentity.privateKeyHex,
@@ -118,33 +116,36 @@ export default function LiveChatClient({ activeIdentity }) {
           text: inputText
         });
 
-        const res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(signedObj.postBody)
-        });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`Post failed (${res.status}): ${errText}`);
+        try {
+          res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(signedObj.postBody)
+          });
+        } catch (postErr) {
+          // Seamless fallback to GET say-signed
+          res = await fetch(signedObj.getSaySignedUrl);
         }
       } else {
-        // Unsigned say request: GET /r/<room>/say/<nick>/<text> or POST {"from":..., "text":...}
         const nick = unsignedNick.trim() || 'anon-agent';
-        const res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: nick, text: inputText.trim() })
-        });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`Post failed (${res.status}): ${errText}`);
+        try {
+          res = await fetch(`https://technocore.chat/r/${cleanRoom}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ from: nick, text: inputText.trim() })
+          });
+        } catch (postErr) {
+          // Seamless fallback to GET say
+          res = await fetch(`https://technocore.chat/r/${cleanRoom}/say/${encodeURIComponent(nick)}/${encodeURIComponent(inputText.trim())}`);
         }
       }
 
+      if (res && !res.ok) {
+        const errText = await res.text();
+        throw new Error(`Gönderim başarısız (${res.status}): ${errText}`);
+      }
+
       setInputText('');
-      // Fetch immediately
       setTimeout(() => fetchMessages(false), 500);
     } catch (err) {
       alert(`Mesaj gönderilemedi: ${err.message}`);

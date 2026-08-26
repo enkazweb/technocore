@@ -82,13 +82,22 @@ export default function DidNotePublisher({ activeIdentity }) {
     try {
       const url = fingerprintInfo.shardedUrl;
       let response;
+      let usedFallback = false;
 
       if (method === 'POST') {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: notePayload })
-        });
+        try {
+          // Use 'text/plain' to avoid CORS OPTIONS preflight request (which Technocore server rejects with 405)
+          response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ value: notePayload })
+          });
+        } catch (postErr) {
+          console.warn('POST CORS/Preflight issue, seamlessly falling back to GET set:', postErr);
+          usedFallback = true;
+          const getUrl = `${url}/set/${encodeURIComponent(notePayload)}`;
+          response = await fetch(getUrl);
+        }
       } else {
         // GET method (URL Encoded)
         const getUrl = `${url}/set/${encodeURIComponent(notePayload)}`;
@@ -102,7 +111,9 @@ export default function DidNotePublisher({ activeIdentity }) {
         setResult({
           success: true,
           status,
-          message: 'DID Note başarıyla technocore.chat sunucusuna yayınlandı!',
+          message: usedFallback 
+            ? 'DID Note başarıyla yayınlandı (CORS koruması için GET kulvarı kullanıldı).'
+            : 'DID Note başarıyla technocore.chat sunucusuna yayınlandı!',
           responseBody: bodyText
         });
         fetchCurrentNote();
@@ -118,8 +129,8 @@ export default function DidNotePublisher({ activeIdentity }) {
       setResult({
         success: false,
         status: 'Error',
-        message: err.message,
-        responseBody: 'Network or CORS error'
+        message: `Yayınlama hatası: ${err.message}`,
+        responseBody: 'Ağ hatası'
       });
     } finally {
       setPublishing(false);
@@ -189,7 +200,7 @@ export default function DidNotePublisher({ activeIdentity }) {
               placeholder="mb-p-mymailboxroom"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700/80 text-sm text-purple-300 font-mono focus:outline-none focus:border-purple-400"
             />
-            <p className="text-[11px] text-slate-400 mt-1">ÖÖrn: `mb-p-` ile başlayan gizli imzalı mailbox odası.</p>
+            <p className="text-[11px] text-slate-400 mt-1">Örn: `mb-p-` ile başlayan gizli imzalı mailbox odası.</p>
           </div>
 
           <div>
@@ -221,7 +232,7 @@ export default function DidNotePublisher({ activeIdentity }) {
               className="flex-1 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition cursor-pointer"
             >
               {publishing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              <span>POST ile Yayınla</span>
+              <span>Yayınla (POST / CORS Fix)</span>
             </button>
 
             <button
